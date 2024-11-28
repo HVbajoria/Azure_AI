@@ -10,15 +10,32 @@
     "format": "prettier --write src public"
   },
   "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.3.0",
     "@types/audioworklet": "^0.0.57",
-    "@types/node": "^22.7.4",
+    "@types/file-saver": "^2.0.7",
+    "@types/markdown-pdf": "^9.0.5",
+    "@types/node": "^22.10.1",
+    "markdown": "^0.5.0",
     "prettier": "^3.3.3",
     "typescript": "^5.2.2",
     "vite": "^5.4.8"
   },
   "dependencies": {
     "@azure/identity": "^4.4.1",
-    "rt-client": "https://github.com/Azure-Samples/aoai-realtime-audio-sdk/releases/download/js/v0.5.0/rt-client-0.5.0.tgz"
+    "@wcj/markdown-to-html": "^3.0.4",
+    "convert-html-to-pdf": "^1.0.1",
+    "dotenv": "^16.4.5",
+    "file-saver": "^2.0.5",
+    "fs": "^0.0.1-security",
+    "html-pdf": "^3.0.1",
+    "html2pdf-ts": "^1.2.23",
+    "markdown-pdf": "^11.0.0",
+    "markdown-to-html": "^0.0.13",
+    "path": "^0.12.7",
+    "pdf-creator-node": "^2.3.5",
+    "rollup-plugin-node-builtins": "^2.1.2",
+    "rt-client": "https://github.com/Azure-Samples/aoai-realtime-audio-sdk/releases/download/js/v0.5.0/rt-client-0.5.0.tgz",
+    "vite-plugin-fs": "^1.1.0"
   },
   "files": [
     "dist"
