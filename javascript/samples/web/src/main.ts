@@ -1,16 +1,30 @@
-// Copyright (c) Microsoft Corporation.
-// Licensed under the MIT license.
-
 import { Player } from "./player.ts";
 import { Recorder } from "./recorder.ts";
 import "./style.css";
 import { LowLevelRTClient, SessionUpdateMessage, Voice } from "rt-client";
 import markdown from '@wcj/markdown-to-html';
-import * as fs from 'fs';
+import { get } from "http";
+
+// funcion to save html as a html file in the same directory
+function saveHtml(html: string, fileName: string) {
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  console.log(url);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  a.click();
+}
+
+async function convertHtmlToPdf(htmlContent: string) {
+  saveHtml(htmlContent, "feedback.html");
+}
+
 
 let realtimeStreaming: LowLevelRTClient;
 let audioRecorder: Recorder;
 let audioPlayer: Player;
+let feedback: string;
 let feedbackready: boolean = false;
 async function start_realtime(endpoint: string, apiKey: string, deploymentOrModel: string) {
   if (isAzureOpenAI()) {
@@ -44,14 +58,14 @@ function createConfigMessage(instruction: string) : SessionUpdateMessage {
         "model": "whisper-1"
       },
       "turn_detection": {
-        "threshold": 0.5,
-        "silence_duration_ms": 1600,
+        "threshold": 0.7,
+        "silence_duration_ms": 1000,
         "type": "server_vad"
       },
     }
   };
 
-  const systemMessage = instruction
+  const systemMessage = "Act like an interviewer named Harshavardhan, conducting a job interview for a Marketing manager position at Unstop, focusing on SEO & SEM, market research, people skills, partner management, as well as communication and problem-solving abilities. # Steps 1. **Introduction:** - Introduce yourself as Shambhavi, explaining the purpose of the interview. - Provide a brief overview of the Marketing Manager role at Unstop and its significance. 2. **Experience and Background:** - Inquire about the candidate’s educational background and qualifications. - Ask about any past experiences or internships related to marketing manager roles. - Explore proficiency in the listed skills and ask the candidate to rate themselves on the basis of a score out of 10. 3. **Required Skills:** - Ask three objective based questions along with proper reasoning of why you chose the particular answer and take that into consideration for evaluation also. - Then ask two subjective questions which are real-world based and situations that are applicable in real-life to test the technical, domain specific and industry skills. 4. **Access the soft skills:** Access the soft skills of the candidate. 5. **Role-play** Act like the company who has approached you for their marketing and wants your help. Help the company solve their issue by giving your thought process, what methods you would use to market and strategies. Make sure the whole situation has all the details and you check the industry, soft skills and also finally close the deal. Have emotions in it just like a real senior position leader from the company. 5. **Leadership and Team Management:** - If applicable, discuss any leadership roles or team management experience. - Inquire about management style and any team-leading experiences, if relevant. 6. **Cultural Fit and Company Values:** - Ask questions to gauge alignment with Unstop’s culture and values. - Explore the candidate’s understanding of Unstop’s business model and potential challenges. 7. **Closing:** - Invite any questions the candidate may have about the role or company. - Provide information on the next steps in the hiring process. Examples of how the questions should be: Required Skills (MCQ) Shambhavi: \"Let's try a quick quiz. Imagine you're launching a new product. Which of these is the most effective SEO strategy?\" Option A: Keyword stuffing in meta descriptions Option B: Building high-quality backlinks Option C: Using black-hat SEO techniques Option D: None of the above Candidate: [Candidate's choice and reasoning] If the user does not give proper reason ask for it. Shambhavi: [Discuss the correct answer and the candidate's reasoning] Required Skills (Subjective) Shambhavi: \"How would you approach a major search engine algorithm update that negatively impacts your website's organic traffic?\" Candidate: [Candidate's response] Shambhavi: \"Can you describe a time when you conducted a successful market research project? What were the key findings and how did you use them to inform your marketing strategy?\" Candidate: [Candidate's response] Soft Skills Assessment Shambhavi: \"Let's say a team member is consistently missing deadlines. How would you approach this situation to motivate them without damaging the team morale?\" Candidate: [Candidate's response] Role-play Shambhavi: \"Imagine you're consulting a tech startup that wants to increase brand awareness. How would you propose a multi-channel marketing strategy, including a budget breakdown?\" Candidate: [Candidate's response] Shambhavi: [Play the role of a skeptical CEO, challenging the candidate's proposals and asking tough questions] Leadership and Team Management Shambhavi: \"Can you share an experience where you had to lead a team through a challenging project? How did you motivate your team and overcome obstacles?\" Candidate: [Candidate's response] Cultural Fit and Company Values Shambhavi: \"What do you know about Unstop's mission and values? How do you see yourself contributing to our culture?\" Candidate: [Candidate's response]";
   const temperature = getTemperature();
   const voice = getVoice();
 
@@ -96,12 +110,8 @@ async function handleRealtimeMessages() {
         audioPlayer.clear();
         break;
       case "conversation.item.input_audio_transcription.completed":
-        const markdownContent=message.transcript;
-        latestInputSpeechBlock.textContent += " User: " + markdownContent;
-        if (feedbackready) {
-          const htmlContent = markdown(markdownContent);
-          console.log(htmlContent);
-        }
+        const Content=message.transcript;
+        latestInputSpeechBlock.textContent += " User: " + Content;
         break;
       case "response.done":
         formReceivedTextContainer.appendChild(document.createElement("hr"));
@@ -110,7 +120,17 @@ async function handleRealtimeMessages() {
         consoleLog = JSON.stringify(message, null, 2);
         break
     }
-    if (consoleLog) {
+    if (consoleLog) { 
+        if (feedbackready && consoleLog.includes("response.output_item.done")) {
+          const response = JSON.parse(consoleLog);
+          const transcript = response.item.content[0].transcript;
+          feedback = transcript;
+          console.log(transcript);
+          const html = markdown(transcript);
+          console.log(html);
+          convertHtmlToPdf(html.toString());
+          feedbackready = false;
+        }
       console.log(consoleLog);
     }
   }
@@ -218,9 +238,9 @@ function setFormInputState(state: InputState) {
   formAzureToggle.disabled = state != InputState.ReadyToStart;
 }
 
-// function getSystemMessage(): string {
-//   return formSessionInstructionsField.value || "";
-// }
+function getSystemMessage(): string {
+  return formSessionInstructionsField.value || "";
+}
 
 function getTemperature(): number {
   return parseFloat(formTemperatureField.value);
@@ -276,44 +296,75 @@ formStartButton.addEventListener("click", async () => {
 
 formStopButton.addEventListener("click", async () => {
   makeNewTextBlock("<< Session Ended >>");
-  await realtimeStreaming.send(createConfigMessage(`Evaluate the interview that you took now for the fresher SDE role at Unstop, focusing on assessing technical and soft skills related to Angular, Laravel, Python, communication, and problem-solving abilities. Provide structured feedback and ratings for each skill, along with an overall assessment and recommendation.
-  
-  # Skills Assessment
-  
-  ### Angular
-  - **Feedback**: [Provide detailed feedback on the candidate's understanding and application of Angular, including specific strengths or areas where improvement is needed. Consider their familiarity with Angular components, services, and integration.]
-  - **Rating**: [X/10]
-  
-  ### Laravel
-  - **Feedback**: [Detail the candidate’s knowledge and experience with Laravel, emphasizing proficiency and practical application. Address their experience with MVC frameworks, eloquent ORM, and Laravel features.]
-  - **Rating**: [X/10]
-  
-  ### Python
-  - **Feedback**: [Offer insights into the candidate's proficiency in Python, paying attention to their skill level in coding, algorithms, or specific libraries. Mention their ability to solve problems efficiently using Python.]
-  - **Rating**: [X/10]
-  
-  ### Communication
-  - **Feedback**: [Evaluate the candidate’s ability to communicate clearly and effectively, providing examples if applicable. Consider how well they articulate their thoughts and interact within a technical conversation.]
-  - **Rating**: [X/10]
-  
-  ### Problem-Solving
-  - **Feedback**: [Assess the candidate's approach to problem-solving, creativity, and critical thinking. Describe their ability to analyze problems and develop effective solutions, providing examples from the interview if possible.]
-  - **Rating**: [X/10]
-  
-  # Overall Feedback
-  
-  - **Summary**: [Write a brief summary of the candidate’s overall performance, highlighting key strengths and identifying areas where they can improve. Consider the balance of technical and soft skills.]
-  - **Overall Rating**: [X/10]
-  
-  # Recommendation
-  
-  - **Consideration for Role**: [State whether the candidate should be considered for the SDE role based on the interview assessment. Include justification for the recommendation, considering the combined skill ratings and overall fit within the team.]
-  
-  # Output Format
-  
-  Provide the feedback report in a structured format as shown above, ensuring clarity and conciseness in each feedback and rating section. Also only generate report if there is enough interactin between the candidate and the interviewer.`));
-  
-  console.log("Feedback config has been sent");
+  await realtimeStreaming.send(createConfigMessage(`Provide a detailed evaluation of the Marketing Manager candidate's interview, assessing their technical and soft skills. Focus on SEO & SEM skills, market research abilities, people skills, partner management, communication, and problem-solving abilities.
+
+# Steps
+
+1. **SEO & SEM Skills**
+   - Identify the candidate's knowledge and experience with SEO and SEM.
+   - Evaluate their ability to effectively implement strategies and measure performance.
+
+2. **Market Research Abilities**
+   - Assess their skills in conducting and analyzing market research.
+   - Consider their ability to interpret data and apply insights to marketing strategies.
+
+3. **People Skills**
+   - Evaluate their interpersonal skills, including teamwork and conflict resolution.
+   - Consider their ability to lead and motivate others.
+
+4. **Partner Management**
+   - Assess their experience and skills in managing partnerships and collaborations.
+   - Evaluate their strategic thinking and negotiation abilities.
+
+5. **Communication Skills**
+   - Evaluate their verbal and written communication skills.
+   - Consider their ability to clearly and persuasively convey ideas.
+
+6. **Problem-Solving Abilities**
+   - Assess their analytical and critical thinking skills.
+   - Consider examples of how they have solved problems in past roles.
+
+7. **Overall Assessment and Recommendation**
+   - Summarize the strengths and weaknesses observed.
+   - Provide a recommendation on whether to proceed with the candidate.
+
+# Output Format
+
+Provide the feedback in a structured format, with each skill area rated on a scale (e.g., 1 to 5, with 5 being excellent). Include a short summary for each skill, supported by observed examples. Conclude with an overall assessment and recommendation paragraph.
+
+## SEO & SEM Skills
+- **Rating:** [1-5]
+- **Feedback:** [Detailed feedback on their SEO & SEM skills]
+
+## Market Research Abilities
+- **Rating:** [1-5]
+- **Feedback:** [Detailed feedback on their market research abilities]
+
+## People Skills
+- **Rating:** [1-5]
+- **Feedback:** [Detailed feedback on their people skills]
+
+## Partner Management
+- **Rating:** [1-5]
+- **Feedback:** [Detailed feedback on their partner management skills]
+
+## Communication Skills
+- **Rating:** [1-5]
+- **Feedback:** [Detailed feedback on their communication skills]
+
+## Problem-Solving Abilities
+- **Rating:** [1-5]
+- **Feedback:** [Detailed feedback on their problem-solving abilities]
+
+## Overall Assessment and Recommendation
+- **Summary:** [Overall strengths and weaknesses]
+- **Recommendation:** [Recommendation on whether to hire the candidate]
+
+# Notes
+
+- Use real examples from the interview to support each rating.
+- Be objective and constructive, ensuring feedback is actionable if applicable.`));
+console.log('Feedback config has been sent');
   setFormInputState(InputState.Working);
   resetAudio(false);
   feedbackready = true;
@@ -338,6 +389,7 @@ formStopButton.addEventListener("click", async () => {
   setTimeout(() => {
     realtimeStreaming.close();
   }, 60000);
+
   });
 
 formClearAllButton.addEventListener("click", async () => {
